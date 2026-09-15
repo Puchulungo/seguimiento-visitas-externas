@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seguimiento — Visitas Externas</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    /* Tema "Crema" — mismo tono cálido y bajo-contraste que Claude Desktop, pensado para
+       leerse bien con mucha luz ambiente. */
+    --navy: #F5F4EE; --navy-mid: #ECEAE1; --accent: #C2622D; --accent-light: #B75A2A;
+    --steel: #6B6A63; --steel-light: #3D3D38; --white: #141413;
+    --surface: #FFFFFF; --surface2: #FAF9F5;
+    --border: #E4E1D7; --border-hover: #C2622D;
+    --text: #141413; --text-muted: #767568;
+    --ok: #15803D; --bad: #B91C1C; --warn: #B45309; --neutral: #6B6A63;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans', sans-serif; background: var(--navy); color: var(--text);
+    min-height: 100vh;
+  }
+  a { color: inherit; }
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--navy-mid);
+    position: sticky; top: 0; z-index: 20;
+  }
+  header.top .title { font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; font-size: 14px; color: var(--accent-light); }
+  header.top .subir { font-size: 12px; color: var(--steel); text-decoration: none; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; }
+  header.top .subir:hover { color: var(--white); border-color: var(--border-hover); }
+  .meta-bar {
+    display: flex; gap: 18px; flex-wrap: wrap; padding: 10px 24px; font-size: 12px; color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-bar b { color: var(--steel-light); font-weight: 500; }
+  .avisos { padding: 10px 24px; font-size: 12px; color: var(--warn); border-bottom: 1px solid var(--border); }
+  .avisos div { margin-bottom: 2px; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 14px; padding: 14px 24px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .toggle { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .toggle button {
+    background: transparent; border: none; color: var(--steel); padding: 8px 16px; font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif; cursor: pointer; font-weight: 500;
+  }
+  .toggle button.active { background: var(--accent); color: #fff; }
+  select, .navbtn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 12px; font-size: 13px; font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+  }
+  select:focus, .navbtn:hover { border-color: var(--border-hover); }
+  .navbtn { padding: 7px 10px; }
+  .month-label { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--steel-light); min-width: 140px; text-align: center; }
+
+  main { padding: 20px 24px 60px; }
+  .loading { color: var(--text-muted); font-size: 13px; padding: 40px 0; text-align: center; }
+  .error-box { color: var(--bad); font-size: 13px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; max-width: 500px; }
+
+  /* calendario */
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 900px; }
+  .cal-dow { font-size: 11px; color: var(--text-muted); text-align: center; padding-bottom: 4px; }
+  .cal-day {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    min-height: 74px; padding: 6px 8px; cursor: default; display: flex; flex-direction: column; gap: 4px;
+  }
+  .cal-day.empty { background: transparent; border: none; }
+  .cal-day.has-data { cursor: pointer; }
+  .cal-day.has-data:hover { border-color: var(--border-hover); background: var(--surface2); }
+  .cal-day.selected { border-color: var(--accent-light); box-shadow: 0 0 0 1px var(--accent-light) inset; }
+  .cal-day .num { font-size: 12px; color: var(--steel); }
+  .cal-day .count { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--accent); font-weight: 600; }
+
+  /* lista de asesores */
+  .asesor-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+  .asesor-chip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--text);
+  }
+  .asesor-chip:hover { border-color: var(--border-hover); }
+  .asesor-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* panel lateral del dia */
+  .day-panel {
+    max-width: 900px; margin-top: 18px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .day-panel h3 { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--accent-light); margin-bottom: 12px; letter-spacing: .04em; }
+  .visit-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 6px; cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .visit-row:last-child { border-bottom: none; }
+  .visit-row:hover { background: var(--surface2); }
+  .badge { font-size: 10px; padding: 3px 8px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
+  .badge.exito { background: rgba(34,197,94,.15); color: var(--ok); }
+  .badge.fracaso { background: rgba(248,113,113,.15); color: var(--bad); }
+  .badge.en_curso { background: rgba(251,191,36,.15); color: var(--warn); }
+  .badge.terminada { background: rgba(148,163,184,.15); color: var(--neutral); }
+  .badge.sin_dato { background: rgba(100,116,139,.15); color: var(--text-muted); }
+  .visit-row .asesor { font-size: 12.5px; color: var(--steel-light); min-width: 150px; }
+  .visit-row .cliente { font-size: 13px; color: var(--white); flex: 1; }
+  .visit-row .hora { font-size: 11px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+  .visit-row .warnflag { font-size: 10px; color: var(--warn); }
+  .empty-msg { color: var(--text-muted); font-size: 13px; padding: 10px 0; }
+
+  /* modal detalle */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(5,10,20,.72); z-index: 100;
+    display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--navy-mid); border: 1px solid var(--border); border-radius: 12px;
+    max-width: 640px; width: 100%; padding: 24px; margin-bottom: 40px;
+  }
+  .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .modal-head .cliente { font-size: 17px; font-weight: 600; color: var(--white); }
+  .modal-head .ruc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .modal-close { background: none; border: none; color: var(--steel); font-size: 20px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--white); }
+  .modal-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tag { font-size: 11px; padding: 3px 9px; border-radius: 6px; background: var(--surface); color: var(--steel-light); border: 1px solid var(--border); }
+  .section { margin-bottom: 16px; }
+  .section h4 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+    margin-bottom: 8px; font-weight: 500;
+  }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .field { font-size: 13px; }
+  .field .k { color: var(--text-muted); font-size: 11px; display: block; margin-bottom: 2px; }
+  .field .v { color: var(--text); }
+  .field .v-empty { color: var(--text-muted); font-style: italic; }
+  .field.wide { grid-column: 1 / -1; }
+  .foto-link { display: inline-block; font-size: 12px; color: var(--accent-light); text-decoration: none; margin-right: 12px; }
+  .foto-link:hover { text-decoration: underline; }
+  .maps-link { font-size: 12px; color: var(--accent-light); text-decoration: none; }
+  .maps-link:hover { text-decoration: underline; }
+  .timeline { list-style: none; }
+  .timeline li {
+    display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0;
+    border-bottom: 1px solid var(--border); color: var(--steel-light);
+  }
+  .timeline li:last-child { border-bottom: none; }
+  .timeline .t-hora { color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+  .raw-qa { font-size: 12px; color: var(--text-muted); }
+  .raw-qa div { margin-bottom: 4px; }
+
+  @media (max-width: 640px) {
+    .cal-day { min-height: 56px; }
+    .field-grid { grid-template-columns: 1fr; }
+    .visit-row .asesor { min-width: 100px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="title">SEGUIMIENTO — VISITAS EXTERNAS</div>
+  <a href="subir.html" class="subir">Subir visitas del día &rarr;</a>
+</header>
+
+<div class="meta-bar" id="meta-bar" style="display:none">
+  <span><b id="meta-n"></b> visitas cargadas</span>
+  <span>actualizado: <b id="meta-generado"></b></span>
+</div>
+
+<div class="toolbar" id="toolbar" style="display:none">
+  <div class="toggle">
+    <button id="btn-calendario" class="active">POR CALENDARIO</button>
+    <button id="btn-asesor">POR ASESOR</button>
+  </div>
+  <button class="navbtn" id="mes-prev">&larr;</button>
+  <div class="month-label" id="mes-label"></div>
+  <button class="navbtn" id="mes-next">&rarr;</button>
+</div>
+
+<main>
+  <div id="loading" class="loading">Cargando datos…</div>
+  <div id="asesor-selector" style="display:none" class="asesor-grid"></div>
+  <div class="cal-grid" id="cal-grid"></div>
+  <div class="day-panel" id="day-panel" style="display:none"></div>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+let DATA = null;
+let visitas = [];
+
+let modo = 'calendario'; // calendario | asesor
+let asesorActivo = null;
+let fechaSel = null; // 'YYYY-MM-DD'
+let mesActual = null; // Date, dia 1 del mes visible
+let porFecha = {};
+
+async function cargarDatos() {
+  try {
+    const res = await fetch('/api/data', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DATA = await res.json();
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      `<div class="error-box">No se pudo cargar la información. Intenta recargar la página.<br><small>${(err && err.message) || ''}</small></div>`;
+    return;
+  }
+  visitas = DATA.visitas || [];
+
+  document.getElementById('meta-n').textContent = DATA.n_visitas ?? visitas.length;
+  document.getElementById('meta-generado').textContent = DATA.generado || '—';
+
+  porFecha = {};
+  visitas.forEach(v => {
+    if (!v.fecha) return;
+    (porFecha[v.fecha] = porFecha[v.fecha] || []).push(v);
+  });
+
+  const fechasOrdenadas = Object.keys(porFecha).sort();
+  if (fechasOrdenadas.length) {
+    const ultima = fechasOrdenadas[fechasOrdenadas.length - 1];
+    mesActual = new Date(ultima + 'T00:00:00');
+  } else {
+    mesActual = new Date();
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('meta-bar').style.display = 'flex';
+  document.getElementById('toolbar').style.display = 'flex';
+
+  if (!visitas.length) {
+    document.getElementById('cal-grid').innerHTML = '';
+    document.getElementById('day-panel').style.display = 'block';
+    document.getElementById('day-panel').innerHTML = '<div class="empty-msg">Todavía no hay visitas cargadas. Usa "Subir visitas del día" para cargar el primer Excel.</div>';
+    return;
+  }
+
+  renderAll();
+}
+
+function visitasVisibles() {
+  if (modo === 'asesor' && asesorActivo) {
+    return visitas.filter(v => v.asesor === asesorActivo);
+  }
+  return visitas;
+}
+
+function porFechaFiltrado() {
+  const vs = visitasVisibles();
+  const idx = {};
+  vs.forEach(v => {
+    if (!v.fecha) return;
+    (idx[v.fecha] = idx[v.fecha] || []).push(v);
+  });
+  return idx;
+}
+
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DOW = ['L','M','X','J','V','S','D'];
+
+function renderAsesorSelector() {
+  const el = document.getElementById('asesor-selector');
+  if (modo !== 'asesor') { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = (DATA.asesores || []).map(a =>
+    `<div class="asesor-chip ${a===asesorActivo?'active':''}" data-asesor="${a.replace(/"/g,'&quot;')}">${a}</div>`
+  ).join('');
+  el.querySelectorAll('.asesor-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      asesorActivo = chip.dataset.asesor;
+      fechaSel = null;
+      renderAll();
+    });
+  });
+}
+
+function fmtDate(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function renderCalendar() {
+  document.getElementById('mes-label').textContent = `${MESES[mesActual.getMonth()]} ${mesActual.getFullYear()}`;
+  const idx = porFechaFiltrado();
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+  DOW.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'cal-dow'; el.textContent = d;
+    grid.appendChild(el);
+  });
+  const first = new Date(mesActual.getFullYear(), mesActual.getMonth(), 1);
+  const startOffset = (first.getDay() + 6) % 7; // lunes=0
+  const daysInMonth = new Date(mesActual.getFullYear(), mesActual.getMonth()+1, 0).getDate();
+
+  for (let i=0; i<startOffset; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-day empty';
+    grid.appendChild(el);
+  }
+  for (let day=1; day<=daysInMonth; day++) {
+    const d = new Date(mesActual.getFullYear(), mesActual.getMonth(), day);
+    const key = fmtDate(d);
+    const vs = idx[key] || [];
+    const el = document.createElement('div');
+    el.className = 'cal-day' + (vs.length ? ' has-data' : '') + (key===fechaSel ? ' selected' : '');
+    el.innerHTML = `
+      <div class="num">${day}</div>
+      ${vs.length ? `<div class="count">${vs.length} visita${vs.length===1?'':'s'}</div>` : ''}
+    `;
+    if (vs.length) {
+      el.addEventListener('click', () => { fechaSel = key; renderAll(); });
+    }
+    grid.appendChild(el);
+  }
+}
+
+function renderDayPanel() {
+  const panel = document.getElementById('day-panel');
+  if (!fechaSel) { panel.style.display = 'none'; return; }
+  const idx = porFechaFiltrado();
+  const vs = (idx[fechaSel] || []).slice().sort((a,b) => (a.fec_creacion||'').localeCompare(b.fec_creacion||''));
+  panel.style.display = 'block';
+  const [y,m,d] = fechaSel.split('-');
+  panel.innerHTML = `<h3>${d}/${m}/${y} — ${vs.length} visita${vs.length===1?'':'s'}</h3>` +
+    (vs.length ? vs.map(v => visitRowHtml(v)).join('') : `<div class="empty-msg">Sin visitas este día.</div>`);
+  panel.querySelectorAll('.visit-row').forEach(row => {
+    row.addEventListener('click', () => openModal(row.dataset.id));
+  });
+}
+
+function visitRowHtml(v) {
+  const hora = v.fec_creacion ? v.fec_creacion.split(' ')[1] || '' : '';
+  const warn = (v.duracion === '00:00:00') ? '<span class="warnflag">&#9888; 0s</span>' : '';
+  return `<div class="visit-row" data-id="${v.id}">
+    <span class="badge ${v.resultado}">${v.estado_final || 'SIN ESTADO'}</span>
+    <span class="asesor">${v.asesor || ''}</span>
+    <span class="cliente">${v.cliente || ''}</span>
+    ${warn}
+    <span class="hora">${hora}</span>
+  </div>`;
+}
+
+function fieldHtml(key, campo) {
+  if (!campo) return '';
+  let val = campo.respuesta;
+  const vacio = (val === null || val === undefined || val === '');
+  if (campo.kind === 'foto') {
+    return `<div class="field"><span class="k">${campo.label}</span><span class="v${vacio?' v-empty':''}">${vacio ? '—' : 'ver en eVisit'}</span></div>`;
+  }
+  if (campo.kind === 'ubicacion') {
+    if (val && val.lat != null) {
+      return `<div class="field wide"><span class="k">${campo.label}</span>
+        <a class="maps-link" target="_blank" href="https://www.google.com/maps?q=${val.lat},${val.lng}">${val.texto || 'ver en mapa'} &#8599;</a></div>`;
+    }
+    return `<div class="field wide"><span class="k">${campo.label}</span><span class="v${(!val||!val.texto)?' v-empty':''}">${(val && val.texto) || '—'}</span></div>`;
+  }
+  const wide = (campo.kind === 'texto' && val && String(val).length > 40) ? ' wide' : '';
+  return `<div class="field${wide}"><span class="k">${campo.label}</span><span class="v${vacio?' v-empty':''}">${vacio ? '—' : val}</span></div>`;
+}
+
+function openModal(id) {
+  const v = visitas.find(x => x.id === id);
+  if (!v) return;
+  const overlay = document.getElementById('overlay');
+  const modal = document.getElementById('modal');
+
+  const comunes = ['selfie_contacto','foto_fachada','atencion','nombre_contacto','cargo_contacto','telefono_contacto','ubicacion','referidos','foto_extra','firma','contacto_texto'];
+  const c = v.campos || {};
+  const comunesHtml = comunes.filter(k=>c[k]).map(k=>fieldHtml(k, c[k])).join('');
+  const especificosKeys = Object.keys(c).filter(k => !comunes.includes(k));
+  const especificosHtml = especificosKeys.map(k=>fieldHtml(k, c[k])).join('');
+
+  const rawHtml = (v.campos_sin_mapear||[]).length ? `
+    <div class="section"><h4>Otras respuestas (sin mapear al catálogo)</h4>
+    <div class="raw-qa">${v.campos_sin_mapear.map(q=>`<div><b>${q.pregunta}:</b> ${q.respuesta ?? '—'}</div>`).join('')}</div></div>` : '';
+
+  const timelineHtml = (v.timeline||[]).length ? `
+    <div class="section"><h4>Línea de tiempo</h4>
+    <ul class="timeline">${v.timeline.map(t=>`<li><span>${t.estado}</span><span class="t-hora">${(t.fecha||'').split(' ')[1]||''}</span></li>`).join('')}</ul></div>` : '';
+
+  modal.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <div class="cliente">${v.cliente||''}</div>
+        <div class="ruc">${v.tipo_documento||''} ${v.documento||''}</div>
+      </div>
+      <button class="modal-close" id="modal-close">&times;</button>
+    </div>
+    <div class="modal-tags">
+      <span class="tag">${v.asesor||''}</span>
+      <span class="tag">${v.tipo_visita||''}</span>
+      <span class="tag">${v.fecha||''}</span>
+      <span class="badge ${v.resultado}">${v.estado_final||'SIN ESTADO'}</span>
+      ${v.duracion ? `<span class="tag">duración ${v.duracion}</span>` : ''}
+    </div>
+    ${comunesHtml ? `<div class="section"><h4>Contacto y ubicación</h4><div class="field-grid">${comunesHtml}</div></div>` : ''}
+    ${especificosHtml ? `<div class="section"><h4>Detalle de la visita</h4><div class="field-grid">${especificosHtml}</div></div>` : ''}
+    ${rawHtml}
+    ${timelineHtml}
+  `;
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  overlay.classList.add('open');
+}
+function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+document.getElementById('overlay').addEventListener('click', (e) => { if (e.target.id==='overlay') closeModal(); });
+
+function renderAll() {
+  renderAsesorSelector();
+  renderCalendar();
+  renderDayPanel();
+}
+
+document.getElementById('btn-calendario').addEventListener('click', () => {
+  modo = 'calendario'; asesorActivo = null; fechaSel = null;
+  document.getElementById('btn-calendario').classList.add('active');
+  document.getElementById('btn-asesor').classList.remove('active');
+  renderAll();
+});
+document.getElementById('btn-asesor').addEventListener('click', () => {
+  modo = 'asesor'; fechaSel = null;
+  if (!asesorActivo) asesorActivo = DATA.asesores[0];
+  document.getElementById('btn-asesor').classList.add('active');
+  document.getElementById('btn-calendario').classList.remove('active');
+  renderAll();
+});
+document.getElementById('mes-prev').addEventListener('click', () => {
+  mesActual = new Date(mesActual.getFullYear(), mesActual.getMonth()-1, 1);
+  fechaSel = null; renderAll();
+});
+document.getElementById('mes-next').addEventListener('click', () => {
+  mesActual = new Date(mesActual.getFullYear(), mesActual.getMonth()+1, 1);
+  fechaSel = null; renderAll();
+});
+
+cargarDatos();
+</script>
+</body>
+</html>

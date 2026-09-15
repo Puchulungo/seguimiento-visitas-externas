@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subir visitas — Seguimiento</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --navy: #F5F4EE; --navy-mid: #ECEAE1; --accent: #C2622D; --accent-light: #B75A2A;
+    --steel: #6B6A63; --steel-light: #3D3D38; --white: #141413;
+    --surface: #FFFFFF; --surface2: #FAF9F5;
+    --border: #E4E1D7; --border-hover: #C2622D;
+    --text: #141413; --text-muted: #767568;
+    --ok: #15803D; --bad: #B91C1C;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans', sans-serif; background: var(--navy); color: var(--text);
+    min-height: 100vh;
+  }
+  a { color: inherit; }
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--navy-mid);
+  }
+  header.top .title { font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; font-size: 14px; color: var(--accent-light); }
+  header.top .back { font-size: 12px; color: var(--steel); text-decoration: none; }
+  header.top .back:hover { color: var(--white); }
+
+  main { max-width: 480px; margin: 0 auto; padding: 40px 20px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px 24px;
+  }
+  .card h2 { font-size: 16px; margin-bottom: 6px; color: var(--white); }
+  .card p.hint { font-size: 12.5px; color: var(--text-muted); margin-bottom: 22px; }
+  label { display: block; font-size: 12px; color: var(--steel-light); margin-bottom: 6px; font-weight: 500; }
+  .field { margin-bottom: 18px; }
+  input[type="file"], input[type="password"] {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; font-family: 'IBM Plex Sans', sans-serif;
+  }
+  input[type="password"]:focus, input[type="file"]:focus { outline: none; border-color: var(--border-hover); }
+  button.submit {
+    width: 100%; background: var(--accent); border: none; color: #fff; font-weight: 600;
+    padding: 12px; border-radius: 8px; font-size: 13.5px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+  }
+  button.submit:hover { background: var(--accent-light); }
+  button.submit:disabled { opacity: .6; cursor: default; }
+  .status { margin-top: 16px; font-size: 13px; padding: 12px 14px; border-radius: 8px; display: none; }
+  .status.ok { display: block; background: rgba(21,128,61,.08); color: var(--ok); border: 1px solid rgba(21,128,61,.25); }
+  .status.err { display: block; background: rgba(185,28,28,.08); color: var(--bad); border: 1px solid rgba(185,28,28,.25); }
+  .status.loading { display: block; background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="title">SEGUIMIENTO — VISITAS EXTERNAS</div>
+  <a href="index.html" class="back">&larr; Ver panel</a>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Subir visitas del día</h2>
+    <p class="hint">Sube el Excel exportado de eVisit (hoja Visita / Estados / Formularios). Se fusiona automáticamente con lo ya cargado, sin duplicar visitas.</p>
+    <form id="form-subir">
+      <div class="field">
+        <label for="archivo">Archivo Excel (.xlsx)</label>
+        <input type="file" id="archivo" name="excel" accept=".xlsx" required>
+      </div>
+      <div class="field">
+        <label for="clave">Clave</label>
+        <input type="password" id="clave" name="clave" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="submit" id="btn-submit">Subir y fusionar</button>
+    </form>
+    <div class="status" id="status"></div>
+  </div>
+</main>
+
+<script>
+const form = document.getElementById('form-subir');
+const statusEl = document.getElementById('status');
+const btn = document.getElementById('btn-submit');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const archivo = document.getElementById('archivo').files[0];
+  const clave = document.getElementById('clave').value;
+  if (!archivo) return;
+
+  btn.disabled = true;
+  statusEl.className = 'status loading';
+  statusEl.textContent = 'Subiendo y procesando…';
+
+  const fd = new FormData();
+  fd.append('excel', archivo);
+  fd.append('clave', clave);
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || ('HTTP ' + res.status));
+    }
+    statusEl.className = 'status ok';
+    statusEl.textContent = `Listo. ${data.visitas_en_este_excel} visitas leídas en este Excel — ${data.visitas_totales_tras_fusionar} visitas en total tras fusionar.`;
+    form.reset();
+  } catch (err) {
+    statusEl.className = 'status err';
+    statusEl.textContent = 'Error: ' + (err.message || 'no se pudo subir el archivo.');
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

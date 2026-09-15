@@ -1,0 +1,11 @@
+{
+  "name": "seguimiento-visitas-externas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Panel de seguimiento de visitas externas (eVisit) para supervisoras comerciales de Truck Center Peru Sur",
+  "dependencies": {
+    "xlsx": "^0.18.5",
+    "formidable": "^3.5.1",
+    "@vercel/blob": "^0.27.0"
+  }
+}
