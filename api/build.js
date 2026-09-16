@@ -17,7 +17,7 @@ const RESULTADO_BUCKET = {
 };
 
 function rowKey(row, cols) {
-  return cols.map((c) => (row[c] === undefined || row[c] === null ? "" : String(row[c]))).join("");
+  return cols.map((c) => (row[c] === undefined || row[c] === null ? "" : String(row[c]))).join("");
 }
 
 function dedupeFullRow(rows) {
@@ -32,17 +32,39 @@ function dedupeFullRow(rows) {
   return out;
 }
 
+const pad = (n) => String(n).padStart(2, "0");
+
+// Convierte un valor de fecha del export eVisit (serial de Excel, texto "DD/MM/YYYY",
+// "DD/MM/YYYY HH:mm:ss" o un objeto Date ya parseado) a "YYYY-MM-DD" o "YYYY-MM-DD HH:mm:ss".
 function excelDateToStr(val, withTime) {
   if (val === undefined || val === null || val === "") return null;
-  let d;
+
+  let d = null;
+
   if (typeof val === "number") {
     // fecha serial de Excel
     d = new Date(Math.round((val - 25569) * 86400 * 1000));
-  } else {
-    d = new Date(val);
+  } else if (val instanceof Date) {
+    d = val;
+  } else if (typeof val === "string") {
+    const s = val.trim();
+    // Formato eVisit tipico: "DD/MM/YYYY" o "DD/MM/YYYY HH:mm:ss"
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (m) {
+      const [, dd, mm, yyyy, hh, min, ss] = m;
+      d = new Date(Date.UTC(
+        Number(yyyy), Number(mm) - 1, Number(dd),
+        hh ? Number(hh) : 0, min ? Number(min) : 0, ss ? Number(ss) : 0
+      ));
+    } else {
+      // fallback: formatos ISO u otros que Date entienda de forma nativa
+      const parsed = new Date(s);
+      if (!isNaN(parsed.getTime())) d = parsed;
+    }
   }
-  if (isNaN(d.getTime())) return typeof val === "string" ? val : null;
-  const pad = (n) => String(n).padStart(2, "0");
+
+  if (!d || isNaN(d.getTime())) return typeof val === "string" ? val : null;
+
   const datePart = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   if (!withTime) return datePart;
   return `${datePart} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
@@ -128,8 +150,8 @@ function build(visitaRows, estadosRows, formulariosRows) {
     }
 
     const esub = (estadosByCode[code] || []).slice().sort((a, b) => {
-      const da = new Date(a["Fecha Estado"]);
-      const db = new Date(b["Fecha Estado"]);
+      const da = new Date(excelDateToStr(a["Fecha Estado"], true) || 0);
+      const db = new Date(excelDateToStr(b["Fecha Estado"], true) || 0);
       return da - db;
     });
     const timeline = esub.map((erow) => ({
