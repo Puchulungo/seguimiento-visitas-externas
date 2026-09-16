@@ -1,4 +1,4 @@
-const formidable = require("formidable");
+const { formidable } = require("formidable");
 const fs = require("fs");
 const XLSX = require("xlsx");
 const { put, list } = require("@vercel/blob");
