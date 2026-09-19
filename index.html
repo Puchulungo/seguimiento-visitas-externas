@@ -49,7 +49,24 @@
   }
   select:focus, .navbtn:hover { border-color: var(--border-hover); }
   .navbtn { padding: 7px 10px; }
-  .asesor-select { min-width: 240px; font-weight: 500; }
+
+  /* selector de asesores (multiple, tipo persiana con checkboxes) */
+  .asesor-select-wrap { position: relative; min-width: 240px; }
+  .asesor-select-btn {
+    width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 12px; font-size: 13px; font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer; font-weight: 500;
+  }
+  .asesor-select-btn:hover { border-color: var(--border-hover); }
+  .asesor-select-panel {
+    position: absolute; top: calc(100% + 4px); left: 0; min-width: 260px; max-height: 300px; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px; z-index: 30;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  }
+  .asesor-check-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .asesor-check-row:hover { background: var(--surface2); }
+  .asesor-check-row input { cursor: pointer; }
+
   #mes-nav { display: none; align-items: center; gap: 14px; }
   .month-label { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--steel-light); min-width: 140px; text-align: center; }
 
@@ -89,6 +106,7 @@
   .badge.en_curso { background: rgba(251,191,36,.15); color: var(--warn); }
   .badge.terminada { background: rgba(148,163,184,.15); color: var(--neutral); }
   .badge.sin_dato { background: rgba(100,116,139,.15); color: var(--text-muted); }
+  .visit-row .asesor { font-size: 11.5px; color: var(--text-muted); min-width: 120px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .visit-row .cliente { font-size: 13px; color: var(--white); flex: 1; }
   .visit-row .horas { font-size: 11px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
   .visit-row .duracion { font-size: 13px; font-weight: 700; color: var(--bad); font-family: 'IBM Plex Mono', monospace; min-width: 64px; text-align: right; white-space: nowrap; }
@@ -141,7 +159,9 @@
     .cal-day { min-height: 56px; }
     .field-grid { grid-template-columns: 1fr; }
     .toolbar { flex-direction: column; align-items: stretch; }
-    .asesor-select { min-width: 0; width: 100%; }
+    .asesor-select-wrap { min-width: 0; width: 100%; }
+    .visit-row { flex-wrap: wrap; }
+    .visit-row .asesor { max-width: none; }
   }
 </style>
 </head>
@@ -158,7 +178,10 @@
 </div>
 
 <div class="toolbar" id="toolbar" style="display:none">
-  <select id="asesor-select" class="asesor-select"></select>
+  <div class="asesor-select-wrap" id="asesor-select-wrap">
+    <button type="button" class="asesor-select-btn" id="asesor-select-btn">Escoger al asesor</button>
+    <div class="asesor-select-panel" id="asesor-select-panel" style="display:none"></div>
+  </div>
   <span id="mes-nav">
     <button class="navbtn" id="mes-prev">&larr;</button>
     <span class="month-label" id="mes-label"></span>
@@ -168,7 +191,7 @@
 
 <main>
   <div id="loading" class="loading">Cargando datos…</div>
-  <div id="sin-asesor" class="empty-msg" style="display:none">Selecciona un asesor arriba para ver su calendario de visitas.</div>
+  <div id="sin-asesor" class="empty-msg" style="display:none">Selecciona uno o más asesores arriba para ver su calendario de visitas.</div>
   <div class="cal-grid" id="cal-grid" style="display:none"></div>
   <div class="day-panel" id="day-panel" style="display:none"></div>
 </main>
@@ -181,7 +204,7 @@
 let DATA = null;
 let visitas = [];
 
-let asesorActivo = null;
+let asesoresActivos = []; // array de nombres de asesor seleccionados
 let fechaSel = null; // 'YYYY-MM-DD'
 let mesActual = null; // Date, dia 1 del mes visible
 let porFecha = {};
@@ -224,8 +247,8 @@ async function cargarDatos() {
 }
 
 function visitasVisibles() {
-  if (!asesorActivo) return [];
-  return visitas.filter(v => v.asesor === asesorActivo);
+  if (!asesoresActivos.length) return [];
+  return visitas.filter(v => asesoresActivos.includes(v.asesor));
 }
 
 function porFechaFiltrado() {
@@ -241,13 +264,42 @@ function porFechaFiltrado() {
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DOW = ['L','M','X','J','V','S','D'];
 
+function actualizarBotonAsesor() {
+  const btn = document.getElementById('asesor-select-btn');
+  if (!asesoresActivos.length) btn.textContent = 'Escoger al asesor';
+  else if (asesoresActivos.length === 1) btn.textContent = asesoresActivos[0];
+  else btn.textContent = `${asesoresActivos.length} asesores seleccionados`;
+}
+
+function onAsesorCheckChange(e) {
+  const val = e.target.value;
+  if (e.target.checked) {
+    if (!asesoresActivos.includes(val)) asesoresActivos.push(val);
+  } else {
+    asesoresActivos = asesoresActivos.filter(x => x !== val);
+  }
+  fechaSel = null;
+  actualizarBotonAsesor();
+  if (asesoresActivos.length) {
+    const fechas = visitas.filter(v => asesoresActivos.includes(v.asesor) && v.fecha).map(v => v.fecha).sort();
+    if (fechas.length) mesActual = new Date(fechas[fechas.length - 1] + 'T00:00:00');
+  }
+  renderCalendarArea();
+}
+
 function renderAsesorSelect() {
-  const sel = document.getElementById('asesor-select');
-  const opts = ['<option value="">Escoger al asesor</option>'].concat(
-    (DATA.asesores || []).map(a => `<option value="${a.replace(/"/g,'&quot;')}">${a}</option>`)
-  );
-  sel.innerHTML = opts.join('');
-  sel.value = asesorActivo || '';
+  const panel = document.getElementById('asesor-select-panel');
+  const asesores = DATA.asesores || [];
+  panel.innerHTML = asesores.map(a => `
+    <label class="asesor-check-row">
+      <input type="checkbox" value="${a.replace(/"/g,'&quot;')}" ${asesoresActivos.includes(a) ? 'checked' : ''}>
+      <span>${a}</span>
+    </label>
+  `).join('');
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', onAsesorCheckChange);
+  });
+  actualizarBotonAsesor();
 }
 
 function fmtDate(d) {
@@ -291,14 +343,33 @@ function renderCalendar() {
   }
 }
 
-// Primer y ultimo registro de la linea de tiempo de una visita, como 'HH:MM:SS'.
-function horasVisita(v) {
-  const tl = (v.timeline || []).filter(t => t.fecha);
-  if (!tl.length) return { inicio: null, fin: null };
-  const ordenado = tl.slice().sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const inicio = ordenado[0].fecha.split(' ')[1] || null;
-  const fin = ordenado[ordenado.length - 1].fecha.split(' ')[1] || null;
-  return { inicio, fin };
+// Diferencia en minutos entre dos fechas 'YYYY-MM-DD HH:MM:SS'.
+function diffMinutos(f1, f2) {
+  const d1 = new Date((f1||'').replace(' ', 'T'));
+  const d2 = new Date((f2||'').replace(' ', 'T'));
+  if (isNaN(d1) || isNaN(d2)) return null;
+  return Math.round((d2 - d1) / 60000);
+}
+function fmtDuracion(mins) {
+  if (mins == null || isNaN(mins) || mins < 0) return null;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2,'0')}min` : `${m} min`;
+}
+
+// A partir del timeline de la visita, calcula la hora de ARRIBO CLIENTE, la hora de
+// VISITA ÉXITO/FRACASO, y el tiempo real transcurrido entre ambas.
+// - CANCELADO EN RUTA: nunca hubo arribo -> no se muestra nada.
+// - Falta ARRIBO CLIENTE o falta VISITA ÉXITO/FRACASO (y no es cancelado): mala ejecución de estados.
+function tiempoVisita(v) {
+  if (v.estado_final === 'CANCELADO EN RUTA') return { cancelado: true };
+  const tl = v.timeline || [];
+  const arribo = tl.find(t => t.estado === 'ARRIBO CLIENTE');
+  const fin = tl.find(t => t.estado === 'VISITA ÉXITO' || t.estado === 'VISITA FRACASO');
+  if (!arribo || !fin) return { malaEjecucion: true };
+  const horaA = (arribo.fecha || '').split(' ')[1] || '';
+  const horaF = (fin.fecha || '').split(' ')[1] || '';
+  const mins = diffMinutos(arribo.fecha, fin.fecha);
+  return { horaA, horaF, duracionTxt: fmtDuracion(mins) };
 }
 
 function renderDayPanel() {
@@ -306,8 +377,9 @@ function renderDayPanel() {
   if (!fechaSel) { panel.style.display = 'none'; return; }
   const idx = porFechaFiltrado();
   const vs = (idx[fechaSel] || []).slice().sort((a, b) => {
-    const ha = horasVisita(a).inicio || a.fec_creacion || '';
-    const hb = horasVisita(b).inicio || b.fec_creacion || '';
+    const ta = tiempoVisita(a), tb = tiempoVisita(b);
+    const ha = ta.horaA || a.fec_creacion || '';
+    const hb = tb.horaA || b.fec_creacion || '';
     return ha.localeCompare(hb);
   });
   panel.style.display = 'block';
@@ -320,17 +392,24 @@ function renderDayPanel() {
 }
 
 function visitRowHtml(v) {
-  const { inicio, fin } = horasVisita(v);
-  const horasTxt = inicio
-    ? `${inicio}${fin && fin !== inicio ? ' – ' + fin : ''}`
-    : null;
-  const horas = horasTxt ? `<span class="horas">${horasTxt}</span>` : `<span class="horas v-empty">—</span>`;
-  const dur = v.duracion ? `<span class="duracion">${v.duracion}</span>` : `<span class="duracion v-empty">—</span>`;
+  const t = tiempoVisita(v);
+  let horasHtml, durHtml;
+  if (t.cancelado) {
+    horasHtml = `<span class="horas v-empty">—</span>`;
+    durHtml = `<span class="duracion v-empty">—</span>`;
+  } else if (t.malaEjecucion) {
+    horasHtml = `<span class="horas v-empty">—</span>`;
+    durHtml = `<span class="duracion">MALA EJECUCIÓN ESTADOS</span>`;
+  } else {
+    horasHtml = `<span class="horas">${t.horaA}${t.horaF ? ' – ' + t.horaF : ''}</span>`;
+    durHtml = t.duracionTxt ? `<span class="duracion">${t.duracionTxt}</span>` : `<span class="duracion v-empty">—</span>`;
+  }
   return `<div class="visit-row" data-id="${v.id}">
     <span class="badge ${v.resultado}">${v.estado_final || 'SIN ESTADO'}</span>
+    <span class="asesor">${v.asesor || ''}</span>
     <span class="cliente">${v.cliente || ''}</span>
-    ${horas}
-    ${dur}
+    ${horasHtml}
+    ${durHtml}
   </div>`;
 }
 
@@ -398,15 +477,15 @@ function openModal(id) {
 function closeModal() { document.getElementById('overlay').classList.remove('open'); }
 document.getElementById('overlay').addEventListener('click', (e) => { if (e.target.id==='overlay') closeModal(); });
 
-// Muestra/oculta calendario, panel del dia y mensaje "escoge un asesor" segun corresponda,
-// y pinta el calendario + panel cuando ya hay un asesor elegido.
+// Muestra/oculta calendario, panel del dia y mensaje "escoge asesores" segun corresponda,
+// y pinta el calendario + panel cuando ya hay al menos un asesor elegido.
 function renderCalendarArea() {
   const cal = document.getElementById('cal-grid');
   const sinAsesor = document.getElementById('sin-asesor');
   const mesNav = document.getElementById('mes-nav');
   const dayPanel = document.getElementById('day-panel');
 
-  if (!asesorActivo) {
+  if (!asesoresActivos.length) {
     cal.style.display = 'none';
     cal.innerHTML = '';
     mesNav.style.display = 'none';
@@ -426,14 +505,15 @@ function renderAll() {
   renderCalendarArea();
 }
 
-document.getElementById('asesor-select').addEventListener('change', (e) => {
-  asesorActivo = e.target.value || null;
-  fechaSel = null;
-  if (asesorActivo) {
-    const fechas = visitas.filter(v => v.asesor === asesorActivo && v.fecha).map(v => v.fecha).sort();
-    if (fechas.length) mesActual = new Date(fechas[fechas.length - 1] + 'T00:00:00');
-  }
-  renderCalendarArea();
+document.getElementById('asesor-select-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById('asesor-select-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('asesor-select-wrap');
+  const panel = document.getElementById('asesor-select-panel');
+  if (wrap && !wrap.contains(e.target)) panel.style.display = 'none';
 });
 document.getElementById('mes-prev').addEventListener('click', () => {
   mesActual = new Date(mesActual.getFullYear(), mesActual.getMonth()-1, 1);
